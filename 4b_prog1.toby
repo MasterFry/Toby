@@ -1,0 +1,17 @@
+some_label:
+        LD R1 VAL_A
+        LD R2 VAL_B
+        ADD R3 R1 R2
+        ST R3 VAL_A
+        ADD R3 R1 R3
+        ST R3 VAL_B
+        ADD R3 R1 R3
+        ST R3 VAL_C
+        ADD R3 R1 R3
+        ST R3 VAL_D
+        HLT
+
+VAL_A   DW 0x3
+VAL_B   DW 0xA
+VAL_C   DW 0x0
+VAL_D   DW 0x0
