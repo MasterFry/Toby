@@ -1,6 +1,8 @@
+# some comment
+
 some_label:
         LD R1 VAL_A
-        LD R2 VAL_B
+        LD R2 VAL_B  # another comment
         ADD R3 R1 R2
         ST R3 VAL_A
         ADD R3 R1 R3

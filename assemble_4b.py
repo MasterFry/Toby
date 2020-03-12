@@ -36,7 +36,7 @@ class AssemblyError(Exception):
 class Token:
     def __init__(self, addr, name, args):
         self.addr = addr
-        self.name = name
+        self.name = name.upper()
         self.args = args
         if len(self.args) != TOKEN_ARG_COUNT[self.name]:
             raise AssemblyError('Invalid number of arguments for %s')
@@ -53,18 +53,32 @@ class Token:
         
         if self.name == 'LD' or self.name == 'ST':
             Rd = REGISTER.index(self.args[0].upper())
-            if len(args[1]) > 2 and args[1][:2] == '0x':
-                addr = int(args[1], base=16)
-            elif len(args[1]) > 2 and args[1][:2] == '0b':
-                addr = int(args[1], base=2)
-            elif args[1] in labels:
-                addr = labels[args[1]].addr
+            if len(self.args[1]) > 2 and self.args[1][:2] == '0x':
+                addr = int(self.args[1], base=16)
+            elif len(self.args[1]) > 2 and self.args[1][:2] == '0b':
+                addr = int(self.args[1], base=2)
+            elif self.args[1] in labels:
+                addr = labels[self.args[1]].addr
             else:
                 try:
-                    addr = int(args[1], base=10)
+                    addr = int(self.args[1], base=10)
                 except ValueError:
                     raise AssemblyError('Invalid address!')
             return (TOKEN_CODES[self.name] << 6) | (Rd << 4) | (addr)
+
+        if self.name == 'DW':
+            if len(self.args[0]) > 2 and self.args[0][:2] == '0x':
+                word = int(self.args[0], base=16)
+            elif len(self.args[0]) > 2 and self.args[0][:2] == '0b':
+                word = int(self.args[0], base=2)
+            else:
+                try:
+                    word = int(self.args[0], base=10)
+                except ValueError:
+                    raise AssemblyError('Invalid address!')
+            return word
+
+        raise AssemblyError('Invalid Token: "%s"' % self.name)
 
 
 class Assembler:
@@ -81,8 +95,8 @@ class Assembler:
         if lines is None:
             raise ValueError('Failed to load File!')
 
-        params = parseLines(lines)
-        tokens = parseParams(params)
+        params = self.parseLines(lines)
+        tokens = self.parseParams(params)
 
         machine_code = list()
         for token in tokens:
@@ -102,11 +116,11 @@ class Assembler:
             if line == '' or line[0] == '#':
                 continue
             
-            comment = line.index('#')
+            comment = line.find('#')
             if comment != -1:
                 line = line[:comment]
             
-            params = line.split()
+            params.append(line.split())
         
         return params
 
@@ -121,7 +135,7 @@ class Assembler:
                 continue
 
             token = None
-            if p[0] in TOKEN_NAMES:
+            if p[0].upper() in TOKEN_NAMES:
                 token = Token(addr, p[0], p[1:])
                 tokens.append(token)
                 addr += 1
@@ -129,7 +143,7 @@ class Assembler:
                     self.labels[label] = token
                     label = None
 
-            elif len(p) >= 2 and p[1] in TOKEN_NAMES:
+            elif len(p) >= 2 and p[1].upper() in TOKEN_NAMES:
                 if label is not None:
                     raise AssemblyError('Multiple Labels!')
                 token = Token(addr, p[1], p[2:])
@@ -137,13 +151,14 @@ class Assembler:
                 addr += 1
                 self.labels[p[0]] = token
 
-            elif len(p[0]) > 1 and p[0][-1] == ':'
+            elif len(p[0]) > 1 and p[0][-1] == ':':
                 if label is not None:
                     raise AssemblyError('Multiple Labels!')
                 label = p[0][:-1]
 
             else:
-                raise AssemblyError('Invalid Token!')
+                print(p)
+                raise AssemblyError('Invalid Token: %s' % ' '.join(p))
         
         return tokens
 
@@ -162,64 +177,69 @@ if INPUT_FILE[-5:] != '.toby':
 if len(sys.argv) == 2:
     OUTPUT_FILE = INPUT_FILE[:-4] + 'lsim'
 else:
-    if OUTPUT_FILE[-5:] != '.lsim':
-        #TODO
+    if len(OUTPUT_FILE) < 5 or OUTPUT_FILE[-5:] != '.lsim':
+        OUTPUT_FILE += '.lsim'
     OUTPUT_FILE = sys.argv[2]
 
-lines = None
-with open(INPUT_FILE) as file:
-    lines = file.readlines()
 
-if lines is None:
-    print('Failed to load file!')
-    exit(0)
+a = Assembler()
+a.assemble(INPUT_FILE, OUTPUT_FILE)
 
-# preprocess lines
-tokens = list()
-for line in lines:
-    line = line.strip()
-    if line != '' and line[0] != '#':
-        params = line.split(' ')
-        tokens.append(Token(params[0], params[1:]))
 
-REGISTER = ['R0', 'R1', 'R2', 'R3']
+# lines = None
+# with open(INPUT_FILE) as file:
+#     lines = file.readlines()
 
-def compileToken(token: Token, label=False):
-    if token.name.upper() == 'HLT':
-        assert(len(token.args) == 0)
-        return 0
+# if lines is None:
+#     print('Failed to load file!')
+#     exit(0)
 
-    elif token.name.upper() == 'ADD':
-        assert(len(token) == 4)
-        Rd = REGISTER.index(token[1].upper())
-        Rs = REGISTER.index(token[2].upper())
-        Rt = REGISTER.index(token[3].upper())
-        return (1 << 6) | (Rd << 4) | (Rs << 2) | Rt
+# # preprocess lines
+# tokens = list()
+# for line in lines:
+#     line = line.strip()
+#     if line != '' and line[0] != '#':
+#         params = line.split(' ')
+#         tokens.append(Token(params[0], params[1:]))
 
-    elif token.name.upper() == 'LD':
-        assert(len(token) == 3)
-        Rd = REGISTER.index(token[1].upper())
-        addr = int(token[2], base=0)
-        return (2 << 6) | (Rd << 4) | addr
+# REGISTER = ['R0', 'R1', 'R2', 'R3']
 
-    elif token.name.upper() == 'ST':
-        assert(len(token) == 3)
-        Rd = REGISTER.index(token[1].upper())
-        addr = int(token[2], base=0)
-        return (3 << 6) | (Rd << 4) | addr
+# def compileToken(token: Token, label=False):
+#     if token.name.upper() == 'HLT':
+#         assert(len(token.args) == 0)
+#         return 0
+
+#     elif token.name.upper() == 'ADD':
+#         assert(len(token) == 4)
+#         Rd = REGISTER.index(token[1].upper())
+#         Rs = REGISTER.index(token[2].upper())
+#         Rt = REGISTER.index(token[3].upper())
+#         return (1 << 6) | (Rd << 4) | (Rs << 2) | Rt
+
+#     elif token.name.upper() == 'LD':
+#         assert(len(token) == 3)
+#         Rd = REGISTER.index(token[1].upper())
+#         addr = int(token[2], base=0)
+#         return (2 << 6) | (Rd << 4) | addr
+
+#     elif token.name.upper() == 'ST':
+#         assert(len(token) == 3)
+#         Rd = REGISTER.index(token[1].upper())
+#         addr = int(token[2], base=0)
+#         return (3 << 6) | (Rd << 4) | addr
         
-    elif token.name.upper() == 'DW':
-        assert(len(token) == 2)
-        word = int(token[1], base=0)
-        return word
+#     elif token.name.upper() == 'DW':
+#         assert(len(token) == 2)
+#         word = int(token[1], base=0)
+#         return word
     
-    print(token)
-    assert(False)
+#     print(token)
+#     assert(False)
 
-# code = list()
-for token in tokens:
-    # code.append(compileToken(token))
-    print(token, hex(compileToken(token)))
+# # code = list()
+# for token in tokens:
+#     # code.append(compileToken(token))
+#     print(token, hex(compileToken(token)))
 
 # with open(OUTPUT_FILE, 'w') as file:
 #     file.write('v2.0 raw\n')
